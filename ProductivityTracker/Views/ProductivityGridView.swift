@@ -8,20 +8,61 @@
 import SwiftUI
 
 struct ProductivityGridView: View {
-    let hours = Array(0..<24)
-    let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
+    let hourglassPattern = [5, 4, 3, 0, 3, 4, 5]
+    let totalHours = 24
+    let gridBoxSize: CGFloat = 40
+
+    @State private var selectedActivity: ActivityType = .sleep
+    @State private var hourActivities: [ActivityType?] = Array(repeating: nil, count: 24)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            
+        VStack(spacing: 0) {
+            // Palette caption
+            Text("Color in your day:")
+                .font(.headline)
+                .foregroundColor(.primary)
+                .padding(.top, 24)
+                .padding(.bottom, 2)
+            // Palette at the top
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 4) {
+                    HStack(spacing: 16) {
+                        ForEach(ActivityType.allCases, id: \ .self) { activity in
+                            Button(action: { selectedActivity = activity }) {
+                                Circle()
+                                    .fill(activity.color)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(selectedActivity == activity ? Color.primary : Color.clear, lineWidth: 3)
+                                    )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .frame(width: 60)
+                        }
+                    }
+                    HStack(spacing: 16) {
+                        ForEach(ActivityType.allCases, id: \ .self) { activity in
+                            Text(activity.rawValue.capitalized)
+                                .font(.caption2)
+                                .foregroundColor(.primary)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 60)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 24)
+                .padding(.bottom, 8)
+            }
+
             Text("Today's Hourglass")
                 .font(.system(size: 28))
                 .bold()
                 .foregroundColor(Theme.darkAccentColor)
-                .padding(.top, 40)
+                .padding(.top, 30)
                 .frame(maxWidth: .infinity, alignment: .center)
-            Spacer()
-            let hourglassPattern = [5, 4, 3, 0, 3, 4, 5]
+
             // Precompute the hour indices for each row
             let hourglassGrid: [[Int?]] = {
                 var result: [[Int?]] = []
@@ -42,17 +83,35 @@ struct ProductivityGridView: View {
                         ForEach(hourglassGrid[row], id: \ .self) { hourOpt in
                             if let hour = hourOpt {
                                 ZStack {
+                                    let isBlack = hourActivities[hour]?.color == .black
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color.blue.opacity(0.15))
-                                        .frame(width: 40, height: 40)
-                                    Text(String(format: "%02d:00", hour))
+                                        .fill((hourActivities[hour]?.color ?? ActivityType.other.color).opacity(0.8))
+                                        .frame(width: gridBoxSize, height: gridBoxSize)
+                                        .onTapGesture {
+                                            hourActivities[hour] = selectedActivity
+                                        }
+                                    // Format hour as 12-hour with AM/PM
+                                    let hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
+                                    let ampm = hour < 12 ? "AM" : "PM"
+                                    Text("\(hour12)\(ampm)")
                                         .font(.caption)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(isBlack ? Theme.parchment : .primary)
+                                }
+                            } else if row == 3 { // Center row, center symbol
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.clear)
+                                        .frame(width: gridBoxSize, height: gridBoxSize)
+                                    Image(systemName: "hourglass")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: gridBoxSize * 0.7, height: gridBoxSize * 0.7)
+                                        .foregroundColor(Theme.logoColor)
                                 }
                             } else {
                                 RoundedRectangle(cornerRadius: 8)
                                     .fill(Color.clear)
-                                    .frame(width: 40, height: 40)
+                                    .frame(width: gridBoxSize, height: gridBoxSize)
                             }
                         }
                         Spacer(minLength: 0)
@@ -111,6 +170,6 @@ struct ActivityPickerView: View {
 
 struct ProductivityGridView_Previews: PreviewProvider {
     static var previews: some View {
-        ProductivityGridView()
+    ProductivityGridView()
     }
 }

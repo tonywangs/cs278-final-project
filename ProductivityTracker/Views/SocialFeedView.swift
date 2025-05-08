@@ -24,7 +24,7 @@ struct SocialFeedView: View {
                 .padding(.top, 12)
                 NavigationView {
                     List(viewModel.friendEntries) { entry in
-                        FriendProductivityCard(entry: entry)
+                        FriendProductivityCard(viewModel: viewModel, entry: entry)
                     }
                     .scrollContentBackground(.hidden)
                     .background(Theme.parchment)
@@ -39,6 +39,7 @@ struct SocialFeedView: View {
 }
 
 struct FriendProductivityCard: View {
+    @ObservedObject var viewModel: SocialFeedViewModel
     let entry: FriendProductivityEntry
     
     var body: some View {
@@ -59,13 +60,80 @@ struct FriendProductivityCard: View {
             }
             
             ProductivityGridPreview(entries: entry.entries)
+                .padding(8)
+            
+            // Comments Section
+            if !entry.comments.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(entry.comments, id: \.self) { comment in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "bubble.left.fill")
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(Theme.logoColor)
+                            Text(comment)
+                                .font(.caption)
+                                .foregroundColor(.primary)
+                                .padding(.vertical, 2)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+            
+            // Comment input
+            if viewModel.showCommentInput[entry.id] ?? false {
+                HStack {
+                    TextField("Add a comment...", text: Binding(
+                        get: { viewModel.commentInputs[entry.id] ?? "" },
+                        set: { viewModel.commentInputs[entry.id] = $0 }
+                    ))
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    Button("Post") {
+                        if let text = viewModel.commentInputs[entry.id], !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                            viewModel.addComment(text, to: entry)
+                        }
+                    }
+                    .foregroundColor(Theme.logoColor)
+                }
+                .padding(.top, 4)
+            }
             
             HStack {
-                Button(action: {}) {
-                    Label("Like", systemImage: "heart")
+                Button(action: {
+                    viewModel.toggleCheer(for: entry)
+                }) {
+                    HStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(viewModel.cheeredPosts.contains(entry.id) ? Theme.darkAccentColor : Color.clear)
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "face.smiling")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundColor(viewModel.cheeredPosts.contains(entry.id) ? Theme.parchment : Theme.darkAccentColor)
+                        }
+                        Text("Cheer")
+                            .foregroundColor(viewModel.cheeredPosts.contains(entry.id) ? Theme.darkAccentColor : Theme.logoColor)
+                        Text("\(entry.cheerCount)")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(viewModel.cheeredPosts.contains(entry.id) ? Theme.darkAccentColor : Theme.logoColor)
+                            .padding(.leading, 2)
+                            .padding(.trailing, 4)
+                            .background(
+                                Capsule()
+                                    .fill(viewModel.cheeredPosts.contains(entry.id) ? Theme.parchment : Color(.systemGray6))
+                            )
+                    }
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 6)
                 }
+                .buttonStyle(PlainButtonStyle())
                 Spacer()
-                Button(action: {}) {
+                Button(action: {
+                    viewModel.showCommentInput[entry.id] = true
+                }) {
                     Label("Comment", systemImage: "message")
                 }
             }
@@ -80,19 +148,19 @@ struct FriendProductivityCard: View {
 
 struct ProductivityGridPreview: View {
     let entries: [ProductivityEntry]
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 1), count: 12)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 8)
     
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 1) {
-            ForEach(0..<48) { slot in
-                if let entry = entries.first(where: { $0.timeSlot == slot }) {
-                    Rectangle()
-                        .fill(Color(entry.activityType.color))
-                        .frame(height: 20)
+        LazyVGrid(columns: columns, spacing: 4) {
+            ForEach(0..<24) { hour in
+                if let entry = entries.first(where: { $0.timeSlot / 2 == hour }) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(entry.activityType.color)
+                        .aspectRatio(1, contentMode: .fit)
                 } else {
-                    Rectangle()
+                    RoundedRectangle(cornerRadius: 6)
                         .fill(Color.gray.opacity(0.3))
-                        .frame(height: 20)
+                        .aspectRatio(1, contentMode: .fit)
                 }
             }
         }
@@ -105,10 +173,15 @@ struct FriendProductivityEntry: Identifiable {
     let userName: String
     let date: Date
     let entries: [ProductivityEntry]
+    var comments: [String]
+    var cheerCount: Int
 }
 
 class SocialFeedViewModel: ObservableObject {
     @Published var friendEntries: [FriendProductivityEntry] = []
+    @Published var commentInputs: [UUID: String] = [:]
+    @Published var showCommentInput: [UUID: Bool] = [:]
+    @Published var cheeredPosts: Set<UUID> = []
     
     init() {
         // TODO: Implement proper data fetching
@@ -122,6 +195,102 @@ class SocialFeedViewModel: ObservableObject {
         }
     }
     
+    func addComment(_ comment: String, to entry: FriendProductivityEntry) {
+        guard let idx = friendEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        friendEntries[idx].comments.append(comment)
+        commentInputs[entry.id] = ""
+        showCommentInput[entry.id] = false
+    }
+    
+    func toggleCheer(for entry: FriendProductivityEntry) {
+        guard let idx = friendEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        if cheeredPosts.contains(entry.id) {
+            friendEntries[idx].cheerCount = max(0, friendEntries[idx].cheerCount - 1)
+            cheeredPosts.remove(entry.id)
+        } else {
+            friendEntries[idx].cheerCount += 1
+            cheeredPosts.insert(entry.id)
+        }
+    }
+    
+    private func generateMockEntries() -> [ProductivityEntry] {
+        var entries: [ProductivityEntry] = []
+        
+        // Helper function to get a random activity based on time of day and user type
+        func getActivityForHour(_ hour: Int, userType: UserType) -> ActivityType {
+            switch userType {
+            case .student:
+                switch hour {
+                case 0...6:  // Night
+                    return .sleep
+                case 7...8:  // Morning
+                    return [.meals, .socialMedia].randomElement()!
+                case 9...11: // Late morning
+                    return [.classes, .homework].randomElement()!
+                case 12...13: // Lunch
+                    return .meals
+                case 14...16: // Afternoon
+                    return [.classes, .homework, .socialMedia].randomElement()!
+                case 17...18: // Early evening
+                    return [.meals, .social, .homework].randomElement()!
+                case 19...21: // Evening
+                    return [.social, .homework, .socialMedia].randomElement()!
+                case 22...23: // Late night
+                    return [.socialMedia, .sleep].randomElement()!
+                default:
+                    return .sleep
+                }
+            case .professional:
+                switch hour {
+                case 0...6:  // Night
+                    return .sleep
+                case 7...8:  // Morning
+                    return [.meals, .socialMedia].randomElement()!
+                case 9...17: // Work hours
+                    return [.homework, .classes].randomElement()! // Using homework/classes to represent work
+                case 18...19: // Evening
+                    return [.meals, .social].randomElement()!
+                case 20...23: // Night
+                    return [.social, .socialMedia, .sleep].randomElement()!
+                default:
+                    return .sleep
+                }
+            }
+        }
+        
+        // Helper function to create activity streaks
+        func createActivityStreak(startHour: Int, duration: Int, activity: ActivityType) {
+            for slot in (startHour * 2)..<(startHour * 2 + duration * 2) {
+                if slot < 48 {
+                    entries.append(ProductivityEntry(
+                        userId: "current_user",
+                        date: Date(),
+                        timeSlot: slot,
+                        activityType: activity
+                    ))
+                }
+            }
+        }
+        
+        // Generate entries for each 30-minute slot
+        for slot in 0..<48 {
+            let hour = slot / 2
+            let activity = getActivityForHour(hour, userType: .student)
+            entries.append(ProductivityEntry(
+                userId: "current_user",
+                date: Date(),
+                timeSlot: slot,
+                activityType: activity
+            ))
+        }
+        return entries
+    }
+    
+    enum UserType {
+        case student
+        case professional
+    }
+    
     private func loadMockData() {
         // Mock data for demonstration
         let mockEntries = [
@@ -130,39 +299,49 @@ class SocialFeedViewModel: ObservableObject {
                 userId: "user1",
                 userName: "Tony Wang",
                 date: Date(),
-                entries: generateMockEntries()
+                entries: generateMockEntries(),
+                comments: ["This is so colorful! Love your routine."],
+                cheerCount: 2
             ),
             FriendProductivityEntry(
                 id: UUID(),
                 userId: "user2",
                 userName: "Sheryl Chen",
-                date: Date(),
-                entries: generateMockEntries()
+                date: Date().addingTimeInterval(-86400), // Yesterday
+                entries: generateMockEntries(),
+                comments: [],
+                cheerCount: 0
             ),
             FriendProductivityEntry(
                 id: UUID(),
-                userId: "user2",
+                userId: "user3",
                 userName: "Katie Cheng",
-                date: Date(),
-                entries: generateMockEntries()
+                date: Date().addingTimeInterval(-172800), // Two days ago
+                entries: generateMockEntries(),
+                comments: [],
+                cheerCount: 1
+            ),
+            FriendProductivityEntry(
+                id: UUID(),
+                userId: "user4",
+                userName: "Allan Guo",
+                date: Date().addingTimeInterval(-604800), // Last week
+                entries: generateMockEntries(),
+                comments: [],
+                cheerCount: 0
+            ),
+            FriendProductivityEntry(
+                id: UUID(),
+                userId: "user5",
+                userName: "Aarav Wattal",
+                date: Date().addingTimeInterval(-1209600), // Two weeks ago
+                entries: generateMockEntries(),
+                comments: [],
+                cheerCount: 0
             )
         ]
         
         friendEntries = mockEntries
-    }
-    
-    private func generateMockEntries() -> [ProductivityEntry] {
-        var entries: [ProductivityEntry] = []
-        for slot in 0..<48 {
-            let activityType: ActivityType = [.sleep, .productive, .exercise, .leisure, .other].randomElement()!
-            entries.append(ProductivityEntry(
-                userId: "current_user",
-                date: Date(),
-                timeSlot: slot,
-                activityType: activityType
-            ))
-        }
-        return entries
     }
 }
 

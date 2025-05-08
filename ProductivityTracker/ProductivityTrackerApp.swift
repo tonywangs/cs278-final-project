@@ -13,6 +13,6 @@ struct ProductivityTrackerApp: App {
         WindowGroup {
             ContentView()
                 .accentColor(Theme.logoColor)
-        }
-    }
+                    }
+            }
 }

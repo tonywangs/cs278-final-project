@@ -22,7 +22,7 @@ class ProductivityViewModel: ObservableObject {
         if let entry = entries.first(where: { $0.timeSlot == timeSlot }) {
             return entry.activityType
         }
-        return .other
+        return .socialMedia
     }
     
     func updateActivity(for timeSlot: Int, activity: ActivityType) {

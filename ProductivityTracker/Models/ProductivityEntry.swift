@@ -6,21 +6,32 @@
 //
 
 import Foundation
+import SwiftUI
 
 enum ActivityType: String, Codable, CaseIterable {
     case sleep = "sleep"
-    case productive = "productive"
+    case socialMedia = "social media"
+    case meals = "meals"
+    case homework = "homework"
+    case classes = "classes"
+    case social = "social"
     case exercise = "exercise"
-    case leisure = "leisure"
+    case routine = "morn/night routine"
+    case aquaProductivity = "other productive"
     case other = "other"
     
-    var color: String {
+    var color: Color {
         switch self {
-        case .sleep: return "black"
-        case .productive: return "blue"
-        case .exercise: return "red"
-        case .leisure: return "green"
-        case .other: return "gray"
+        case .sleep: return .black
+        case .socialMedia: return .red
+        case .meals: return .yellow
+        case .homework: return .green
+        case .classes: return Color(red: 0, green: 0.4, blue: 0) // dark green
+        case .social: return .pink
+        case .exercise: return Color(red: 0.0, green: 0.5, blue: 1.0) // bright blue
+        case .routine: return .gray
+        case .aquaProductivity: return Color(red: 0.0, green: 0.9, blue: 0.9) // aqua
+        case .other: return Color(.systemGray4)
         }
     }
 }
