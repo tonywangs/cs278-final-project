@@ -12,28 +12,57 @@ struct ProductivityGridView: View {
     let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
 
     var body: some View {
-        VStack {
-            Text("Today's Productivity")
-                .font(.title)
+        VStack(alignment: .leading, spacing: 0) {
+            
+            Text("Today's Hourglass")
+                .font(.system(size: 28))
                 .bold()
-                .padding(.top)
+                .foregroundColor(Theme.darkAccentColor)
+                .padding(.top, 40)
+                .frame(maxWidth: .infinity, alignment: .center)
             Spacer()
-            LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(hours, id: \.self) { hour in
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.blue.opacity(0.15))
-                            .aspectRatio(1, contentMode: .fit)
-                        Text(String(format: "%02d:00", hour))
-                            .font(.caption)
-                            .foregroundColor(.primary)
+            let hourglassPattern = [5, 4, 3, 0, 3, 4, 5]
+            // Precompute the hour indices for each row
+            let hourglassGrid: [[Int?]] = {
+                var result: [[Int?]] = []
+                var hour = 0
+                for count in hourglassPattern {
+                    if count == 0 {
+                        result.append([nil])
+                    } else {
+                        result.append((0..<count).map { _ in let h = hour; hour += 1; return h })
+                    }
+                }
+                return result
+            }()
+            VStack(spacing: 32) {
+                ForEach(0..<hourglassGrid.count, id: \ .self) { row in
+                    HStack(spacing: 12) {
+                        Spacer(minLength: 0)
+                        ForEach(hourglassGrid[row], id: \ .self) { hourOpt in
+                            if let hour = hourOpt {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.blue.opacity(0.15))
+                                        .frame(width: 40, height: 40)
+                                    Text(String(format: "%02d:00", hour))
+                                        .font(.caption)
+                                        .foregroundColor(.primary)
+                                }
+                            } else {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.clear)
+                                    .frame(width: 40, height: 40)
+                            }
+                        }
+                        Spacer(minLength: 0)
                     }
                 }
             }
-            .padding()
+            .padding(.vertical, 24)
             Spacer()
         }
-        .background(Color(.systemBackground))
+        .background(Theme.parchment.ignoresSafeArea())
     }
 }
 

@@ -12,6 +12,7 @@ struct ProductivityTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .accentColor(Theme.logoColor)
         }
     }
 }

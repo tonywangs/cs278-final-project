@@ -11,15 +11,30 @@ struct SocialFeedView: View {
     @StateObject private var viewModel = SocialFeedViewModel()
     
     var body: some View {
-        NavigationView {
-            List(viewModel.friendEntries) { entry in
-                FriendProductivityCard(entry: entry)
-            }
-            .navigationTitle("Friends' Productivity")
-            .refreshable {
-                await viewModel.refreshFeed()
+        ZStack {
+            Theme.parchment.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("hourglass")
+                        .font(.custom("Georgia-Bold", size: 32))
+                        .foregroundColor(Theme.logoColor)
+                        .padding(.leading)
+                    Spacer()
+                }
+                .padding(.top, 12)
+                NavigationView {
+                    List(viewModel.friendEntries) { entry in
+                        FriendProductivityCard(entry: entry)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.parchment)
+                    .refreshable {
+                        await viewModel.refreshFeed()
+                    }
+                }
             }
         }
+        .environment(\.font, .custom("Georgia", size: 18))
     }
 }
 
@@ -32,12 +47,14 @@ struct FriendProductivityCard: View {
                 Image(systemName: "person.circle.fill")
                     .resizable()
                     .frame(width: 40, height: 40)
+                    .foregroundColor(Theme.darkAccentColor)
                 VStack(alignment: .leading) {
                     Text(entry.userName)
-                        .font(.headline)
+                        .font(.system(size: 20))
+                        .foregroundColor(Theme.darkAccentColor)
                     Text(entry.date.formatted(date: .abbreviated, time: .omitted))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.logoColor)
                 }
             }
             
@@ -52,7 +69,7 @@ struct FriendProductivityCard: View {
                     Label("Comment", systemImage: "message")
                 }
             }
-            .foregroundColor(.blue)
+            .foregroundColor(Theme.logoColor)
         }
         .padding()
         .background(Color(.systemBackground))
@@ -111,14 +128,21 @@ class SocialFeedViewModel: ObservableObject {
             FriendProductivityEntry(
                 id: UUID(),
                 userId: "user1",
-                userName: "John Doe",
+                userName: "Tony Wang",
                 date: Date(),
                 entries: generateMockEntries()
             ),
             FriendProductivityEntry(
                 id: UUID(),
                 userId: "user2",
-                userName: "Jane Smith",
+                userName: "Sheryl Chen",
+                date: Date(),
+                entries: generateMockEntries()
+            ),
+            FriendProductivityEntry(
+                id: UUID(),
+                userId: "user2",
+                userName: "Katie Cheng",
                 date: Date(),
                 entries: generateMockEntries()
             )
