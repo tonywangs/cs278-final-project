@@ -7,6 +7,7 @@
 
 import Foundation
 import UserNotifications
+import SwiftUI
 
 class ProductivityViewModel: ObservableObject {
     @Published private(set) var entries: [ProductivityEntry] = []
@@ -18,19 +19,19 @@ class ProductivityViewModel: ObservableObject {
         setupNotifications()
     }
     
-    func getActivityType(for timeSlot: Int) -> ActivityType {
+    func getActivityType(for timeSlot: Int) -> ActivityCategory {
         if let entry = entries.first(where: { $0.timeSlot == timeSlot }) {
-            return entry.activityType
+            return entry.category
         }
-        return .socialMedia
+        return ActivityCategory(name: "Default", color: ColorCodable(color: .gray))
     }
     
-    func updateActivity(for timeSlot: Int, activity: ActivityType) {
+    func updateActivity(for timeSlot: Int, activity: ActivityCategory) {
         let entry = ProductivityEntry(
             userId: getCurrentUserId(),
             date: Date(),
             timeSlot: timeSlot,
-            activityType: activity
+            category: activity
         )
         
         if let index = entries.firstIndex(where: { $0.timeSlot == timeSlot }) {

@@ -155,7 +155,7 @@ struct ProductivityGridPreview: View {
             ForEach(0..<24) { hour in
                 if let entry = entries.first(where: { $0.timeSlot / 2 == hour }) {
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(entry.activityType.color)
+                        .fill(entry.category.color.color)
                         .aspectRatio(1, contentMode: .fit)
                 } else {
                     RoundedRectangle(cornerRadius: 6)
@@ -217,56 +217,40 @@ class SocialFeedViewModel: ObservableObject {
         var entries: [ProductivityEntry] = []
         
         // Helper function to get a random activity based on time of day and user type
-        func getActivityForHour(_ hour: Int, userType: UserType) -> ActivityType {
-            switch userType {
-            case .student:
-                switch hour {
-                case 0...6:  // Night
-                    return .sleep
-                case 7...8:  // Morning
-                    return [.meals, .socialMedia].randomElement()!
-                case 9...11: // Late morning
-                    return [.classes, .homework].randomElement()!
-                case 12...13: // Lunch
-                    return .meals
-                case 14...16: // Afternoon
-                    return [.classes, .homework, .socialMedia].randomElement()!
-                case 17...18: // Early evening
-                    return [.meals, .social, .homework].randomElement()!
-                case 19...21: // Evening
-                    return [.social, .homework, .socialMedia].randomElement()!
-                case 22...23: // Late night
-                    return [.socialMedia, .sleep].randomElement()!
-                default:
-                    return .sleep
-                }
-            case .professional:
-                switch hour {
-                case 0...6:  // Night
-                    return .sleep
-                case 7...8:  // Morning
-                    return [.meals, .socialMedia].randomElement()!
-                case 9...17: // Work hours
-                    return [.homework, .classes].randomElement()! // Using homework/classes to represent work
-                case 18...19: // Evening
-                    return [.meals, .social].randomElement()!
-                case 20...23: // Night
-                    return [.social, .socialMedia, .sleep].randomElement()!
-                default:
-                    return .sleep
-                }
+        func getActivityForHour(_ hour: Int, userType: UserType) -> ActivityCategory {
+            switch hour {
+            case 0...5:
+                return ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))
+            case 6...7:
+                return [ActivityCategory(name: "Meals", color: ColorCodable(color: .yellow)), ActivityCategory(name: "Social Media", color: ColorCodable(color: .red))].randomElement()!
+            case 8...11:
+                return [ActivityCategory(name: "Classes", color: ColorCodable(color: Color(red: 0, green: 0.4, blue: 0))), ActivityCategory(name: "Homework", color: ColorCodable(color: .green))].randomElement()!
+            case 12:
+                return ActivityCategory(name: "Meals", color: ColorCodable(color: .yellow))
+            case 13...15:
+                return [ActivityCategory(name: "Classes", color: ColorCodable(color: Color(red: 0, green: 0.4, blue: 0))), ActivityCategory(name: "Homework", color: ColorCodable(color: .green)), ActivityCategory(name: "Social Media", color: ColorCodable(color: .red))].randomElement()!
+            case 16...17:
+                return [ActivityCategory(name: "Meals", color: ColorCodable(color: .yellow)), ActivityCategory(name: "Social", color: ColorCodable(color: .pink)), ActivityCategory(name: "Homework", color: ColorCodable(color: .green))].randomElement()!
+            case 18...20:
+                return [ActivityCategory(name: "Social", color: ColorCodable(color: .pink)), ActivityCategory(name: "Homework", color: ColorCodable(color: .green)), ActivityCategory(name: "Social Media", color: ColorCodable(color: .red))].randomElement()!
+            case 21...22:
+                return [ActivityCategory(name: "Social Media", color: ColorCodable(color: .red)), ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))].randomElement()!
+            case 23:
+                return ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))
+            default:
+                return ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))
             }
         }
         
         // Helper function to create activity streaks
-        func createActivityStreak(startHour: Int, duration: Int, activity: ActivityType) {
+        func createActivityStreak(startHour: Int, duration: Int, activity: ActivityCategory) {
             for slot in (startHour * 2)..<(startHour * 2 + duration * 2) {
                 if slot < 48 {
                     entries.append(ProductivityEntry(
                         userId: "current_user",
                         date: Date(),
                         timeSlot: slot,
-                        activityType: activity
+                        category: activity
                     ))
                 }
             }
@@ -280,7 +264,7 @@ class SocialFeedViewModel: ObservableObject {
                 userId: "current_user",
                 date: Date(),
                 timeSlot: slot,
-                activityType: activity
+                category: activity
             ))
         }
         return entries
