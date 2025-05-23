@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
+const admin = require('firebase-admin');
 require('dotenv').config();
 
 const app = express();
@@ -10,11 +10,23 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection
-const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/productivity-tracker';
-mongoose.connect(uri)
-  .then(() => console.log('MongoDB connection established'))
-  .catch(err => console.log('MongoDB connection error:', err));
+// Initialize Firebase Admin
+let serviceAccount;
+try {
+  serviceAccount = require('./serviceAccountKey.json');
+} catch (error) {
+  console.error('Error: serviceAccountKey.json not found. Please make sure you have downloaded your Firebase service account key.');
+  process.exit(1);
+}
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+const db = admin.firestore();
+
+// Make db available to routes
+app.locals.db = db;
 
 // Routes
 const tasksRouter = require('./routes/tasks');
