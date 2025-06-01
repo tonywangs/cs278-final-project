@@ -87,6 +87,61 @@ struct ProfileView: View {
                             }
                         }
                     }
+                    // Friend search and add section
+                    Divider().padding(.vertical, 8)
+                    VStack(spacing: 8) {
+                        TextField("Enter username to add", text: $searchUsername)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .autocapitalization(.none)
+                            .padding(.horizontal)
+                        Button("Search") {
+                            searchUser(byUsername: searchUsername) { result in
+                                if let result = result {
+                                    searchResult = result
+                                    errorMessage = nil
+                                } else {
+                                    searchResult = nil
+                                    errorMessage = "User not found."
+                                }
+                            }
+                        }
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Theme.darkAccentColor)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                        if let result = searchResult {
+                            HStack {
+                                Text("@\(result.username)")
+                                    .foregroundColor(Theme.logoColor)
+                                Spacer()
+                                Button("Add Friend") {
+                                    if let user = authViewModel.user {
+                                        if friends.contains(result.username) {
+                                            errorMessage = "Already a friend."
+                                        } else {
+                                            addFriend(currentUID: user.uid, friendUID: result.uid)
+                                            errorMessage = nil
+                                            searchUsername = ""
+                                            searchResult = nil
+                                        }
+                                    }
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Theme.logoColor)
+                                .cornerRadius(8)
+                            }
+                            .padding(.horizontal)
+                        }
+                        if let error = errorMessage {
+                            Text(error)
+                                .foregroundColor(.red)
+                        }
+                    }
                 } else {
                     Text("Not logged in")
                         .foregroundColor(.gray)
