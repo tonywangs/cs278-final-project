@@ -26,30 +26,58 @@ class AuthViewModel: ObservableObject {
 struct ContentView: View {
     @StateObject private var authViewModel = AuthViewModel()
     @State private var showLanding = true
+    @State private var showLogin = false
     
     var body: some View {
-        if showLanding {
-            LandingView(onStart: { withAnimation { showLanding = false } })
-        } else if !authViewModel.isAuthenticated {
-            LoginView()
-                .environmentObject(authViewModel)
-                .onAppear {
-                    print("LoginView shown")
-                    print("isAuthenticated: \(authViewModel.isAuthenticated)")
+        Group {
+            if showLanding {
+                LandingView(onStart: {
+                    withAnimation { showLanding = false }
+                    // After landing, decide whether to show login or main app
+                    if !authViewModel.isAuthenticated {
+                        showLogin = true
+                    }
+                })
+            } else if showLogin || !authViewModel.isAuthenticated {
+                LoginView()
+                    .environmentObject(authViewModel)
+                    .onAppear {
+                        print("LoginView shown")
+                        print("isAuthenticated: \(authViewModel.isAuthenticated)")
+                    }
+                    .onChange(of: authViewModel.isAuthenticated) { isAuth in
+                        if isAuth {
+                            showLogin = false
+                        }
+                    }
+            } else {
+                TabView {
+                    SocialFeedView()
+                        .tabItem {
+                            Label("Friends", systemImage: "person.2")
+                        }
+                    ProductivityGridView()
+                        .tabItem {
+                            Label("Today", systemImage: "calendar")
+                        }
+                    ProfileView(onLoginTap: {
+                        showLogin = true
+                    })
+                        .environmentObject(authViewModel)
+                        .tabItem {
+                            Label("Profile", systemImage: "person.crop.circle")
+                        }
                 }
-        } else {
-            TabView {
-                SocialFeedView()
-                    .tabItem {
-                        Label("Friends", systemImage: "person.2")
-                    }
-                ProductivityGridView()
-                    .tabItem {
-                        Label("Today", systemImage: "calendar")
-                    }
+                .background(Theme.parchment.ignoresSafeArea())
+                .environment(\.font, .custom("Georgia", size: 18))
+                .onAppear {
+                    print("Main TabView appeared")
+                }
             }
-            .background(Theme.parchment.ignoresSafeArea())
-            .environment(\.font, .custom("Georgia", size: 18))
+        }
+        .onAppear {
+            print("ContentView appeared")
+            print("Initial showLanding value: \(showLanding)")
         }
     }
 }

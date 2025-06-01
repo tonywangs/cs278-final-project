@@ -10,35 +10,50 @@ struct LoginView: View {
     @State private var showError = false
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
+        ZStack {
+            Theme.parchment.ignoresSafeArea()
+            VStack(spacing: 32) {
+                Spacer()
+                Text("hourglass")
+                    .font(.custom("Georgia-Bold", size: 32))
+                    .foregroundColor(Theme.logoColor)
+                    .padding(.bottom, 8)
                 Text("Welcome to Productivity Tracker")
-                    .font(.title)
-                    .padding(.bottom, 30)
+                    .font(.title3)
+                    .foregroundColor(Theme.darkAccentColor)
+                    .padding(.bottom, 16)
                 
-                TextField("Email", text: $email)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocapitalization(.none)
-                    .keyboardType(.emailAddress)
-                
-                SecureField("Password", text: $password)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                VStack(spacing: 16) {
+                    TextField("Email", text: $email)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocapitalization(.none)
+                        .keyboardType(.emailAddress)
+                        .padding(.horizontal)
+                    
+                    SecureField("Password", text: $password)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding(.horizontal)
+                }
                 
                 Button(action: signIn) {
                     Text("Sign In")
+                        .font(.custom("Georgia-Bold", size: 20))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
+                        .padding(.vertical, 14)
+                        .background(Theme.darkAccentColor)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
                 }
                 
                 Button(action: { showSignUp = true }) {
                     Text("Don't have an account? Sign Up")
-                        .foregroundColor(.blue)
+                        .foregroundColor(Theme.logoColor)
+                        .font(.system(size: 16, weight: .medium))
                 }
+                Spacer()
             }
-            .padding()
+            .padding(.vertical)
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -70,33 +85,44 @@ struct SignUpView: View {
     @State private var showError = false
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
+        ZStack {
+            Theme.parchment.ignoresSafeArea()
+            VStack(spacing: 32) {
+                Spacer()
                 Text("Create Account")
-                    .font(.title)
-                    .padding(.bottom, 30)
+                    .font(.custom("Georgia-Bold", size: 28))
+                    .foregroundColor(Theme.logoColor)
+                    .padding(.bottom, 8)
                 
-                TextField("Email", text: $email)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocapitalization(.none)
-                    .keyboardType(.emailAddress)
-                
-                SecureField("Password", text: $password)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                
-                SecureField("Confirm Password", text: $confirmPassword)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                VStack(spacing: 16) {
+                    TextField("Email", text: $email)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocapitalization(.none)
+                        .keyboardType(.emailAddress)
+                        .padding(.horizontal)
+                    
+                    SecureField("Password", text: $password)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding(.horizontal)
+                    
+                    SecureField("Confirm Password", text: $confirmPassword)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding(.horizontal)
+                }
                 
                 Button(action: signUp) {
                     Text("Sign Up")
+                        .font(.custom("Georgia-Bold", size: 20))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
+                        .padding(.vertical, 14)
+                        .background(Theme.darkAccentColor)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
                 }
+                Spacer()
             }
-            .padding()
+            .padding(.vertical)
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {
