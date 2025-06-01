@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 
 struct LoginView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
@@ -33,6 +34,8 @@ struct LoginView: View {
                     SecureField("Password", text: $password)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .padding(.horizontal)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
                 }
                 
                 Button(action: signIn) {
@@ -79,6 +82,7 @@ struct SignUpView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var email = ""
+    @State private var username = ""
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var errorMessage = ""
@@ -100,16 +104,17 @@ struct SignUpView: View {
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
                         .padding(.horizontal)
-                    
+                    TextField("Username", text: $username)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocapitalization(.none)
+                        .padding(.horizontal)
                     SecureField("Password", text: $password)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .padding(.horizontal)
-                    
                     SecureField("Confirm Password", text: $confirmPassword)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .padding(.horizontal)
                 }
-                
                 Button(action: signUp) {
                     Text("Sign Up")
                         .font(.custom("Georgia-Bold", size: 20))
@@ -140,14 +145,35 @@ struct SignUpView: View {
             showError = true
             return
         }
-        
+        guard !username.isEmpty else {
+            errorMessage = "Username is required"
+            showError = true
+            return
+        }
         Auth.auth().createUser(withEmail: email, password: password) { result, error in
             if let error = error {
                 errorMessage = error.localizedDescription
                 showError = true
-            } else {
+            } else if let user = result?.user {
+                createUserProfile(uid: user.uid, email: email, username: username)
                 dismiss()
             }
+        }
+    }
+}
+
+// Firestore user profile creation function
+func createUserProfile(uid: String, email: String, username: String) {
+    let db = Firestore.firestore()
+    db.collection("users").document(uid).setData([
+        "email": email,
+        "username": username,
+        "friends": []
+    ]) { error in
+        if let error = error {
+            print("Error creating user profile: \(error)")
+        } else {
+            print("User profile created!")
         }
     }
 } 
