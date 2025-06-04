@@ -70,7 +70,7 @@ class ProductivityViewModel: ObservableObject {
     }
     
     private func setupNotifications() {
-        notificationCenter.requestAuthorization(options: [.alert, .sound]) { granted, error in
+        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if granted {
                 self.scheduleDailyReminder()
             }
@@ -79,9 +79,10 @@ class ProductivityViewModel: ObservableObject {
     
     private func scheduleDailyReminder() {
         let content = UNMutableNotificationContent()
-        content.title = "Complete Your Day"
-        content.body = "Don't forget to fill out your productivity grid for today!"
+        content.title = "Daily Reminder"
+        content.body = "Remember to enter your hours for today if you haven't already!"
         content.sound = .default
+        content.userInfo = ["openApp": true]
         
         var dateComponents = DateComponents()
         dateComponents.hour = 21 // 9 PM
@@ -90,6 +91,12 @@ class ProductivityViewModel: ObservableObject {
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
         let request = UNNotificationRequest(identifier: "dailyReminder", content: content, trigger: trigger)
         
-        notificationCenter.add(request)
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["dailyReminder"])
+        
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("Error scheduling notification: \(error.localizedDescription)")
+            }
+        }
     }
 }
