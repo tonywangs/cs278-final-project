@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import FirebaseAuth
 
 struct ActivityButton: View {
     let activity: ActivityCategory
@@ -114,13 +115,25 @@ struct ProductivityGridView: View {
     let totalHours = 24
     let gridBoxSize: CGFloat = 40
 
+    @StateObject private var productivityViewModel = ProductivityViewModel()
     @State private var selectedActivity: ActivityCategory = ActivityCategory(
         name: "Default",
         color: ColorCodable(color: .gray)
     )
-    @State private var hourActivities: [ActivityCategory?] = Array(repeating: nil, count: 24)
     @State private var showingActivityManagement = false
     @State private var activities: [ActivityCategory] = []
+    
+    // Computed property that gets hour activities from ProductivityViewModel
+    private var hourActivities: [ActivityCategory?] {
+        var activities: [ActivityCategory?] = Array(repeating: nil, count: 24)
+        for entry in productivityViewModel.entries {
+            let hour = entry.timeSlot / 2
+            if hour < 24 {
+                activities[hour] = entry.category
+            }
+        }
+        return activities
+    }
 
     var hourglassGrid: [[Int?]] {
         var result: [[Int?]] = []
@@ -178,7 +191,9 @@ struct ProductivityGridView: View {
                         selectedActivity: selectedActivity,
                         gridBoxSize: gridBoxSize,
                         onHourTap: { hour in
-                            hourActivities[hour] = selectedActivity
+                            // Update both 30-minute slots for this hour via ProductivityViewModel
+                            productivityViewModel.updateActivity(for: hour * 2, activity: selectedActivity)
+                            productivityViewModel.updateActivity(for: hour * 2 + 1, activity: selectedActivity)
                         }
                     )
                 }
@@ -193,6 +208,7 @@ struct ProductivityGridView: View {
         .onAppear {
             loadActivities()
             setupNotificationObserver()
+            setupAuthStateListener()
         }
         .onChange(of: showingActivityManagement) { newValue in
             if !newValue {
@@ -212,6 +228,17 @@ struct ProductivityGridView: View {
             queue: .main
         ) { _ in
             loadActivities()
+        }
+    }
+    
+    private func setupAuthStateListener() {
+        Auth.auth().addStateDidChangeListener { [weak productivityViewModel] _, user in
+            if user != nil {
+                // User logged in, refresh hourglass data from Firebase
+                Task {
+                    await productivityViewModel?.refreshFromFirebase()
+                }
+            }
         }
     }
 }

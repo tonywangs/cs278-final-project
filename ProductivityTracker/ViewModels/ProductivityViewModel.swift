@@ -8,6 +8,8 @@
 import Foundation
 import UserNotifications
 import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
 
 class ProductivityViewModel: ObservableObject {
     @Published private(set) var entries: [ProductivityEntry] = []
@@ -15,8 +17,11 @@ class ProductivityViewModel: ObservableObject {
     private let notificationCenter = UNUserNotificationCenter.current()
     
     init() {
-        loadEntries()
         setupNotifications()
+        // Load from Firebase first, then fall back to local storage
+        Task {
+            await loadEntriesFromFirebase()
+        }
     }
     
     func getActivityType(for timeSlot: Int) -> ActivityCategory {
@@ -41,6 +46,11 @@ class ProductivityViewModel: ObservableObject {
         }
         
         saveEntries()
+        
+        // Also sync to server
+        Task {
+            await syncHourglassData()
+        }
     }
     
     func shareProductivity() {
@@ -58,6 +68,95 @@ class ProductivityViewModel: ObservableObject {
         }
     }
     
+    func refreshFromFirebase() async {
+        await loadEntriesFromFirebase()
+    }
+    
+    func loadEntriesFromFirebase() async {
+        guard let currentUser = Auth.auth().currentUser else {
+            // If not authenticated, load from local storage
+            await MainActor.run {
+                loadEntries()
+            }
+            return
+        }
+        
+        let db = Firestore.firestore()
+        
+        // Get today's date string
+        let today = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let todayStr = formatter.string(from: today)
+        let docId = "\(currentUser.uid)_\(todayStr)"
+        
+        do {
+            let document = try await db.collection("productivity").document(docId).getDocument()
+            
+            if document.exists,
+               let data = document.data(),
+               let hourglassData = data["hourglassData"] as? [String: [String: Any]] {
+                
+                // Convert Firebase data back to entries
+                var firebaseEntries: [ProductivityEntry] = []
+                
+                for (hourStr, activityData) in hourglassData {
+                    guard let hour = Int(hourStr),
+                          let activityName = activityData["name"] as? String,
+                          let colorData = activityData["color"] as? [String: Double] else {
+                        continue
+                    }
+                    
+                    let activityColor = ColorCodable(
+                        red: colorData["red"] ?? 0,
+                        green: colorData["green"] ?? 0,
+                        blue: colorData["blue"] ?? 0,
+                        opacity: colorData["opacity"] ?? 1
+                    )
+                    
+                    let activity = ActivityCategory(
+                        name: activityName,
+                        color: activityColor
+                    )
+                    
+                    // Create entries for both 30-minute slots in this hour
+                    firebaseEntries.append(ProductivityEntry(
+                        userId: currentUser.uid,
+                        date: today,
+                        timeSlot: hour * 2,
+                        category: activity
+                    ))
+                    firebaseEntries.append(ProductivityEntry(
+                        userId: currentUser.uid,
+                        date: today,
+                        timeSlot: hour * 2 + 1,
+                        category: activity
+                    ))
+                }
+                
+                await MainActor.run {
+                    self.entries = firebaseEntries
+                    print("Loaded \(firebaseEntries.count) entries from Firebase")
+                    // Also save to local storage as backup
+                    self.saveEntries()
+                }
+                
+            } else {
+                // No Firebase data found, load from local storage
+                print("No Firebase data found for today, loading from local storage")
+                await MainActor.run {
+                    loadEntries()
+                }
+            }
+            
+        } catch {
+            print("Failed to load from Firebase: \(error), falling back to local storage")
+            await MainActor.run {
+                loadEntries()
+            }
+        }
+    }
+    
     private func saveEntries() {
         if let encoded = try? JSONEncoder().encode(entries) {
             userDefaults.set(encoded, forKey: "productivityEntries")
@@ -65,8 +164,63 @@ class ProductivityViewModel: ObservableObject {
     }
     
     private func getCurrentUserId() -> String {
-        // TODO: Implement proper user authentication
-        return "current_user"
+        return Auth.auth().currentUser?.uid ?? "anonymous"
+    }
+    
+    private func getCurrentUsername() -> String {
+        // We'll need to get this from the user profile
+        // For now, return a placeholder
+        return "unknown_user"
+    }
+    
+    func syncHourglassData() async {
+        guard let currentUser = Auth.auth().currentUser else { return }
+        
+        // Get username from Firestore
+        let db = Firestore.firestore()
+        
+        do {
+            let userDoc = try await db.collection("users").document(currentUser.uid).getDocument()
+            let username = userDoc.data()?["username"] as? String ?? "Unknown"
+            
+            // Convert entries to hourglass format (hour -> activity mapping)
+            var hourglassData: [String: [String: Any]] = [:]
+            
+            for entry in entries {
+                let hour = entry.timeSlot / 2 // Convert 30-min slots to hours
+                let hourStr = String(hour)
+                
+                hourglassData[hourStr] = [
+                    "name": entry.category.name,
+                    "color": [
+                        "red": entry.category.color.red,
+                        "green": entry.category.color.green,
+                        "blue": entry.category.color.blue,
+                        "opacity": entry.category.color.opacity
+                    ]
+                ]
+            }
+            
+            // Save to Firestore with date-based document ID
+            let today = Date()
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let todayStr = formatter.string(from: today)
+            let docId = "\(currentUser.uid)_\(todayStr)"
+            
+            try await db.collection("productivity").document(docId).setData([
+                "userId": currentUser.uid,
+                "username": username,
+                "date": today,
+                "hourglassData": hourglassData,
+                "lastUpdated": FieldValue.serverTimestamp(),
+                "visibility": "followers"
+            ], merge: true)
+            
+            print("Hourglass data synced successfully")
+        } catch {
+            print("Failed to sync hourglass data: \(error)")
+        }
     }
     
     private func setupNotifications() {

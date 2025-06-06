@@ -66,6 +66,14 @@ struct ColorCodable: Codable, Equatable {
         self.opacity = Double(a)
     }
     
+    // Additional initializer for direct RGBA values
+    init(red: Double, green: Double, blue: Double, opacity: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.opacity = opacity
+    }
+    
     var color: Color {
         Color(red: red, green: green, blue: blue, opacity: opacity)
     }

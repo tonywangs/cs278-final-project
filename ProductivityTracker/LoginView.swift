@@ -69,10 +69,14 @@ struct LoginView: View {
     }
     
     private func signIn() {
+        print("Attempting to sign in with email: \(email)")
         Auth.auth().signIn(withEmail: email, password: password) { result, error in
             if let error = error {
+                print("Sign in error: \(error)")
                 errorMessage = error.localizedDescription
                 showError = true
+            } else if let user = result?.user {
+                print("Sign in successful for user: \(user.uid)")
             }
         }
     }
@@ -150,30 +154,20 @@ struct SignUpView: View {
             showError = true
             return
         }
+        
+        print("Attempting to create user with email: \(email), username: \(username)")
         Auth.auth().createUser(withEmail: email, password: password) { result, error in
             if let error = error {
+                print("Sign up error: \(error)")
                 errorMessage = error.localizedDescription
                 showError = true
             } else if let user = result?.user {
-                createUserProfile(uid: user.uid, email: email, username: username)
+                print("Sign up successful for user: \(user.uid)")
+                authViewModel.createUserProfile(for: user, username: username)
                 dismiss()
             }
         }
     }
 }
 
-// Firestore user profile creation function
-func createUserProfile(uid: String, email: String, username: String) {
-    let db = Firestore.firestore()
-    db.collection("users").document(uid).setData([
-        "email": email,
-        "username": username,
-        "friends": []
-    ]) { error in
-        if let error = error {
-            print("Error creating user profile: \(error)")
-        } else {
-            print("User profile created!")
-        }
-    }
-} 
+

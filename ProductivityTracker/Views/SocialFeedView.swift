@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import FirebaseAuth
 
 struct SocialFeedView: View {
     @StateObject private var viewModel = SocialFeedViewModel()
@@ -23,13 +24,44 @@ struct SocialFeedView: View {
                 }
                 .padding(.top, 12)
                 NavigationView {
-                    List(viewModel.friendEntries) { entry in
-                        FriendProductivityCard(viewModel: viewModel, entry: entry)
+                    if viewModel.isLoading && viewModel.friendEntries.isEmpty {
+                        VStack {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                            Text("Loading feed...")
+                                .foregroundColor(.gray)
+                                .padding(.top)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Theme.parchment)
+                    } else if viewModel.friendEntries.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "person.2.slash")
+                                .font(.system(size: 48))
+                                .foregroundColor(.gray)
+                            Text("No one to follow yet!")
+                                .font(.title2)
+                                .foregroundColor(.gray)
+                            Text("Search for friends in your Profile tab")
+                                .foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Theme.parchment)
+                    } else {
+                        List(viewModel.friendEntries) { entry in
+                            FriendProductivityCard(viewModel: viewModel, entry: entry)
+                        }
+                        .scrollContentBackground(.hidden)
+                        .background(Theme.parchment)
+                        .refreshable {
+                            await viewModel.refreshFeed()
+                        }
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.parchment)
-                    .refreshable {
-                        await viewModel.refreshFeed()
+                    
+                    if let errorMessage = viewModel.errorMessage {
+                        Text("Error: \(errorMessage)")
+                            .foregroundColor(.red)
+                            .padding()
                     }
                 }
             }
@@ -53,7 +85,7 @@ struct FriendProductivityCard: View {
                     Text(entry.userName)
                         .font(.system(size: 20))
                         .foregroundColor(Theme.darkAccentColor)
-                    Text(entry.date.formatted(date: .abbreviated, time: .omitted))
+                    Text("Updated \(timeAgoString(from: entry.lastUpdated))")
                         .font(.system(size: 14))
                         .foregroundColor(Theme.logoColor)
                 }
@@ -167,165 +199,49 @@ struct ProductivityGridPreview: View {
     }
 }
 
-struct FriendProductivityEntry: Identifiable {
+struct FriendProductivityEntry: Identifiable, Codable {
     let id: UUID
     let userId: String
-    let userName: String
+    let username: String
     let date: Date
     let entries: [ProductivityEntry]
+    let lastUpdated: Date
     var comments: [String]
     var cheerCount: Int
+    
+    // For backward compatibility with existing UI
+    var userName: String { username }
+    
+    init(id: UUID = UUID(), userId: String, username: String, date: Date, entries: [ProductivityEntry], lastUpdated: Date, comments: [String] = [], cheerCount: Int = 0) {
+        self.id = id
+        self.userId = userId
+        self.username = username
+        self.date = date
+        self.entries = entries
+        self.lastUpdated = lastUpdated
+        self.comments = comments
+        self.cheerCount = cheerCount
+    }
 }
 
-class SocialFeedViewModel: ObservableObject {
-    @Published var friendEntries: [FriendProductivityEntry] = []
-    @Published var commentInputs: [UUID: String] = [:]
-    @Published var showCommentInput: [UUID: Bool] = [:]
-    @Published var cheeredPosts: Set<UUID> = []
+// All ViewModel logic is now in SocialFeedViewModel.swift
+
+// Helper function to show time ago
+func timeAgoString(from date: Date) -> String {
+    let now = Date()
+    let timeInterval = now.timeIntervalSince(date)
     
-    init() {
-        // TODO: Implement proper data fetching
-        loadMockData()
-    }
-    
-    func refreshFeed() async {
-        // TODO: Implement proper data refresh
-        await MainActor.run {
-            loadMockData()
-        }
-    }
-    
-    func addComment(_ comment: String, to entry: FriendProductivityEntry) {
-        guard let idx = friendEntries.firstIndex(where: { $0.id == entry.id }) else { return }
-        friendEntries[idx].comments.append(comment)
-        commentInputs[entry.id] = ""
-        showCommentInput[entry.id] = false
-    }
-    
-    func toggleCheer(for entry: FriendProductivityEntry) {
-        guard let idx = friendEntries.firstIndex(where: { $0.id == entry.id }) else { return }
-        if cheeredPosts.contains(entry.id) {
-            friendEntries[idx].cheerCount = max(0, friendEntries[idx].cheerCount - 1)
-            cheeredPosts.remove(entry.id)
-        } else {
-            friendEntries[idx].cheerCount += 1
-            cheeredPosts.insert(entry.id)
-        }
-    }
-    
-    private func generateMockEntries() -> [ProductivityEntry] {
-        var entries: [ProductivityEntry] = []
-        
-        // Helper function to get a random activity based on time of day and user type
-        func getActivityForHour(_ hour: Int, userType: UserType) -> ActivityCategory {
-            switch hour {
-            case 0...5:
-                return ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))
-            case 6...7:
-                return [ActivityCategory(name: "Meals", color: ColorCodable(color: .yellow)), ActivityCategory(name: "Social Media", color: ColorCodable(color: .red))].randomElement()!
-            case 8...11:
-                return [ActivityCategory(name: "Classes", color: ColorCodable(color: Color(red: 0, green: 0.4, blue: 0))), ActivityCategory(name: "Homework", color: ColorCodable(color: .green))].randomElement()!
-            case 12:
-                return ActivityCategory(name: "Meals", color: ColorCodable(color: .yellow))
-            case 13...15:
-                return [ActivityCategory(name: "Classes", color: ColorCodable(color: Color(red: 0, green: 0.4, blue: 0))), ActivityCategory(name: "Homework", color: ColorCodable(color: .green)), ActivityCategory(name: "Social Media", color: ColorCodable(color: .red))].randomElement()!
-            case 16...17:
-                return [ActivityCategory(name: "Meals", color: ColorCodable(color: .yellow)), ActivityCategory(name: "Social", color: ColorCodable(color: .pink)), ActivityCategory(name: "Homework", color: ColorCodable(color: .green))].randomElement()!
-            case 18...20:
-                return [ActivityCategory(name: "Social", color: ColorCodable(color: .pink)), ActivityCategory(name: "Homework", color: ColorCodable(color: .green)), ActivityCategory(name: "Social Media", color: ColorCodable(color: .red))].randomElement()!
-            case 21...22:
-                return [ActivityCategory(name: "Social Media", color: ColorCodable(color: .red)), ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))].randomElement()!
-            case 23:
-                return ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))
-            default:
-                return ActivityCategory(name: "Sleep", color: ColorCodable(color: .black))
-            }
-        }
-        
-        // Helper function to create activity streaks
-        func createActivityStreak(startHour: Int, duration: Int, activity: ActivityCategory) {
-            for slot in (startHour * 2)..<(startHour * 2 + duration * 2) {
-                if slot < 48 {
-                    entries.append(ProductivityEntry(
-                        userId: "current_user",
-                        date: Date(),
-                        timeSlot: slot,
-                        category: activity
-                    ))
-                }
-            }
-        }
-        
-        // Generate entries for each 30-minute slot
-        for slot in 0..<48 {
-            let hour = slot / 2
-            let activity = getActivityForHour(hour, userType: .student)
-            entries.append(ProductivityEntry(
-                userId: "current_user",
-                date: Date(),
-                timeSlot: slot,
-                category: activity
-            ))
-        }
-        return entries
-    }
-    
-    enum UserType {
-        case student
-        case professional
-    }
-    
-    private func loadMockData() {
-        // Mock data for demonstration
-        let mockEntries = [
-            FriendProductivityEntry(
-                id: UUID(),
-                userId: "user1",
-                userName: "Tony Wang",
-                date: Date(),
-                entries: generateMockEntries(),
-                comments: ["This is so colorful! Love your routine."],
-                cheerCount: 2
-            ),
-            FriendProductivityEntry(
-                id: UUID(),
-                userId: "user2",
-                userName: "Sheryl Chen",
-                date: Date().addingTimeInterval(-86400), // Yesterday
-                entries: generateMockEntries(),
-                comments: [],
-                cheerCount: 0
-            ),
-            FriendProductivityEntry(
-                id: UUID(),
-                userId: "user3",
-                userName: "Katie Cheng",
-                date: Date().addingTimeInterval(-172800), // Two days ago
-                entries: generateMockEntries(),
-                comments: [],
-                cheerCount: 1
-            ),
-            FriendProductivityEntry(
-                id: UUID(),
-                userId: "user4",
-                userName: "Allan Guo",
-                date: Date().addingTimeInterval(-604800), // Last week
-                entries: generateMockEntries(),
-                comments: [],
-                cheerCount: 0
-            ),
-            FriendProductivityEntry(
-                id: UUID(),
-                userId: "user5",
-                userName: "Aarav Wattal",
-                date: Date().addingTimeInterval(-1209600), // Two weeks ago
-                entries: generateMockEntries(),
-                comments: [],
-                cheerCount: 0
-            )
-        ]
-        
-        friendEntries = mockEntries
+    if timeInterval < 60 {
+        return "just now"
+    } else if timeInterval < 3600 {
+        let minutes = Int(timeInterval / 60)
+        return "\(minutes)m ago"
+    } else if timeInterval < 86400 {
+        let hours = Int(timeInterval / 3600)
+        return "\(hours)h ago"
+    } else {
+        let days = Int(timeInterval / 86400)
+        return "\(days)d ago"
     }
 }
 

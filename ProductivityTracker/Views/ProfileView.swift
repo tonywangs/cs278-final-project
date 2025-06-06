@@ -6,10 +6,11 @@ struct ProfileView: View {
     var onLoginTap: (() -> Void)? = nil
     
     @State private var username: String = ""
-    @State private var friends: [String] = []
+    @State private var following: [UserProfile] = []
     @State private var searchUsername: String = ""
-    @State private var searchResult: (uid: String, username: String)? = nil
+    @State private var searchResult: UserProfile? = nil
     @State private var errorMessage: String? = nil
+    @State private var isLoading = false
     
     var body: some View {
         ZStack {
@@ -58,7 +59,7 @@ struct ProfileView: View {
                     }
                     .onAppear {
                         fetchUserProfile(uid: user.uid)
-                        fetchFriends(uid: user.uid)
+                        fetchFollowing(uid: user.uid)
                     }
                     Button(action: {
                         authViewModel.signOut()
@@ -74,36 +75,36 @@ struct ProfileView: View {
                     }
                     Divider().padding(.vertical, 8)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Friends")
+                        Text("Following")
                             .font(.headline)
                             .foregroundColor(Theme.darkAccentColor)
-                        if friends.isEmpty {
-                            Text("No friends yet.")
+                        if following.isEmpty {
+                            Text("Not following anyone yet.")
                                 .foregroundColor(.gray)
                         } else {
-                            ForEach(friends, id: \.self) { friend in
-                                Text(friend)
-                                    .foregroundColor(Theme.logoColor)
+                            ForEach(following) { user in
+                                HStack {
+                                    Text("@\(user.username)")
+                                        .foregroundColor(Theme.logoColor)
+                                    Spacer()
+                                    Button("Unfollow") {
+                                        unfollowUser(currentUID: authViewModel.user?.uid ?? "", targetUID: user.uid)
+                                    }
+                                    .foregroundColor(.red)
+                                    .font(.caption)
+                                }
                             }
                         }
                     }
                     // Friend search and add section
                     Divider().padding(.vertical, 8)
                     VStack(spacing: 8) {
-                        TextField("Enter username to add", text: $searchUsername)
+                        TextField("Enter username to follow", text: $searchUsername)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .autocapitalization(.none)
                             .padding(.horizontal)
                         Button("Search") {
-                            searchUser(byUsername: searchUsername) { result in
-                                if let result = result {
-                                    searchResult = result
-                                    errorMessage = nil
-                                } else {
-                                    searchResult = nil
-                                    errorMessage = "User not found."
-                                }
-                            }
+                            searchUser(byUsername: searchUsername)
                         }
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white)
@@ -117,15 +118,12 @@ struct ProfileView: View {
                                 Text("@\(result.username)")
                                     .foregroundColor(Theme.logoColor)
                                 Spacer()
-                                Button("Add Friend") {
+                                Button("Follow") {
                                     if let user = authViewModel.user {
-                                        if friends.contains(result.username) {
-                                            errorMessage = "Already a friend."
+                                        if following.contains(where: { $0.uid == result.uid }) {
+                                            errorMessage = "Already following."
                                         } else {
-                                            addFriend(currentUID: user.uid, friendUID: result.uid)
-                                            errorMessage = nil
-                                            searchUsername = ""
-                                            searchResult = nil
+                                            followUser(currentUID: user.uid, targetUID: result.uid)
                                         }
                                     }
                                 }
@@ -175,53 +173,112 @@ struct ProfileView: View {
             }
         }
     }
-    // Fetch the user's friends (usernames)
-    func fetchFriends(uid: String) {
+    // Fetch the user's following list
+    func fetchFollowing(uid: String) {
         let db = Firestore.firestore()
         db.collection("users").document(uid).getDocument { doc, error in
-            if let data = doc?.data(), let friendUIDs = data["friends"] as? [String] {
-                // Fetch usernames for each friend UID
+            if let data = doc?.data(), let followingUIDs = data["following"] as? [String] {
+                // Fetch usernames for each followed UID
                 let group = DispatchGroup()
-                var friendNames: [String] = []
-                for fuid in friendUIDs {
+                var followingDetails: [UserProfile] = []
+                for fuid in followingUIDs {
                     group.enter()
                     db.collection("users").document(fuid).getDocument { fdoc, _ in
                         if let fdata = fdoc?.data(), let uname = fdata["username"] as? String {
-                            friendNames.append(uname)
+                            followingDetails.append(UserProfile(uid: fuid, username: uname))
                         }
                         group.leave()
                     }
                 }
                 group.notify(queue: .main) {
-                    friends = friendNames
+                    self.following = followingDetails
                 }
             }
         }
     }
+    
     // Search for a user by username
-    func searchUser(byUsername username: String, completion: @escaping ((uid: String, username: String)?) -> Void) {
+    func searchUser(byUsername username: String) {
+        guard !username.isEmpty else { return }
+        
+        isLoading = true
         let db = Firestore.firestore()
+        
         db.collection("users").whereField("username", isEqualTo: username).getDocuments { snapshot, error in
-            if let doc = snapshot?.documents.first {
-                completion((uid: doc.documentID, username: username))
-            } else {
-                completion(nil)
+            DispatchQueue.main.async {
+                self.isLoading = false
+                
+                if let doc = snapshot?.documents.first {
+                    self.searchResult = UserProfile(uid: doc.documentID, username: username)
+                    self.errorMessage = nil
+                } else {
+                    self.searchResult = nil
+                    self.errorMessage = "User not found."
+                }
             }
         }
     }
-    // Add a friend (by UID)
-    func addFriend(currentUID: String, friendUID: String) {
+    
+    // Follow a user
+    func followUser(currentUID: String, targetUID: String) {
         let db = Firestore.firestore()
-        let userRef = db.collection("users").document(currentUID)
-        let friendRef = db.collection("users").document(friendUID)
-        userRef.updateData([
-            "friends": FieldValue.arrayUnion([friendUID])
-        ])
-        friendRef.updateData([
-            "friends": FieldValue.arrayUnion([currentUID])
-        ])
-        // Refresh friends list
-        fetchFriends(uid: currentUID)
+        let currentUserRef = db.collection("users").document(currentUID)
+        let targetUserRef = db.collection("users").document(targetUID)
+        
+        // Use batch to update both users atomically
+        let batch = db.batch()
+        
+        batch.updateData([
+            "following": FieldValue.arrayUnion([targetUID])
+        ], forDocument: currentUserRef)
+        
+        batch.updateData([
+            "followers": FieldValue.arrayUnion([currentUID])
+        ], forDocument: targetUserRef)
+        
+        batch.commit { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "Failed to follow user: \(error.localizedDescription)"
+                } else {
+                    self.errorMessage = nil
+                    self.searchUsername = ""
+                    self.searchResult = nil
+                    // Refresh following list
+                    self.fetchFollowing(uid: currentUID)
+                }
+            }
+        }
+    }
+    
+    // Unfollow a user
+    func unfollowUser(currentUID: String, targetUID: String) {
+        let db = Firestore.firestore()
+        let currentUserRef = db.collection("users").document(currentUID)
+        let targetUserRef = db.collection("users").document(targetUID)
+        
+        // Use batch to update both users atomically
+        let batch = db.batch()
+        
+        batch.updateData([
+            "following": FieldValue.arrayRemove([targetUID])
+        ], forDocument: currentUserRef)
+        
+        batch.updateData([
+            "followers": FieldValue.arrayRemove([currentUID])
+        ], forDocument: targetUserRef)
+        
+        batch.commit { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "Failed to unfollow user: \(error.localizedDescription)"
+                } else {
+                    self.errorMessage = nil
+                    // Refresh following list
+                    self.fetchFollowing(uid: currentUID)
+                }
+            }
+        }
     }
     // Change username if not taken
     func changeUsername(newUsername: String, uid: String) {
