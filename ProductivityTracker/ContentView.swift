@@ -100,6 +100,7 @@ struct ContentView: View {
     @StateObject private var authViewModel = AuthViewModel()
     @State private var showLanding = true
     @State private var showLogin = false
+    @State private var selectedTab = 0 // 0: Social, 1: Hourglass, 2: Profile
     
     var body: some View {
         Group {
@@ -124,15 +125,17 @@ struct ContentView: View {
                         }
                     }
             } else {
-                TabView {
+                TabView(selection: $selectedTab) {
                     SocialFeedView()
                         .tabItem {
                             Label("Friends", systemImage: "person.2")
                         }
+                        .tag(0)
                     ProductivityGridView()
                         .tabItem {
                             Label("Today", systemImage: "calendar")
                         }
+                        .tag(1)
                     ProfileView(onLoginTap: {
                         showLogin = true
                     })
@@ -140,17 +143,29 @@ struct ContentView: View {
                         .tabItem {
                             Label("Profile", systemImage: "person.crop.circle")
                         }
+                        .tag(2)
                 }
                 .background(Theme.parchment.ignoresSafeArea())
                 .environment(\.font, .custom("Georgia", size: 18))
                 .onAppear {
                     print("Main TabView appeared")
+                    setupNotificationObserver()
                 }
             }
         }
         .onAppear {
             print("ContentView appeared")
             print("Initial showLanding value: \(showLanding)")
+        }
+    }
+    
+    private func setupNotificationObserver() {
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("SwitchToHourglassTab"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            selectedTab = 1 // Switch to hourglass tab
         }
     }
 }

@@ -17,6 +17,8 @@ class SocialFeedViewModel: ObservableObject {
     @Published var cheeredPosts: Set<UUID> = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var userHasStartedHourglass = false
+    @Published var showingHourglassPrompt = false
     
     private let db = Firestore.firestore()
     
@@ -24,10 +26,62 @@ class SocialFeedViewModel: ObservableObject {
         Task {
             await loadFeedData()
         }
+        
+        // Listen for hourglass data updates
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("HourglassDataUpdated"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                await self.checkUserHourglassStatus()
+            }
+        }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     func refreshFeed() async {
+        // Recheck user's hourglass status first
+        await checkUserHourglassStatus()
+        
+        // Then reload feed data regardless of hourglass status
+        // This allows users to see new followers even if they haven't started their hourglass
         await loadFeedData()
+    }
+    
+    func checkUserHourglassStatus() async {
+        guard let currentUser = Auth.auth().currentUser else { return }
+        
+        let today = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let todayStr = formatter.string(from: today)
+        
+        do {
+            let currentUserProductivityDocId = "\(currentUser.uid)_\(todayStr)"
+            let currentUserProductivityDoc = try await db.collection("productivity").document(currentUserProductivityDocId).getDocument()
+            
+            let hasStartedHourglass = currentUserProductivityDoc.exists && 
+                                    currentUserProductivityDoc.data()?["hourglassData"] != nil
+            
+            await MainActor.run {
+                let wasShowingPrompt = self.showingHourglassPrompt
+                self.userHasStartedHourglass = hasStartedHourglass
+                self.showingHourglassPrompt = !hasStartedHourglass
+                
+                // If user just started their hourglass, refresh the feed
+                if wasShowingPrompt && hasStartedHourglass {
+                    Task {
+                        await self.loadFeedData()
+                    }
+                }
+            }
+        } catch {
+            print("Error checking user hourglass status: \(error)")
+        }
     }
     
     private func loadFeedData() async {
@@ -45,6 +99,33 @@ class SocialFeedViewModel: ObservableObject {
         }
         
         do {
+            // Get today's date string
+            let today = Date()
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let todayStr = formatter.string(from: today)
+            
+            // First, check if current user has started their hourglass today
+            let currentUserProductivityDocId = "\(currentUser.uid)_\(todayStr)"
+            let currentUserProductivityDoc = try await db.collection("productivity").document(currentUserProductivityDocId).getDocument()
+            
+            let hasStartedHourglass = currentUserProductivityDoc.exists && 
+                                    currentUserProductivityDoc.data()?["hourglassData"] != nil
+            
+            await MainActor.run {
+                self.userHasStartedHourglass = hasStartedHourglass
+                self.showingHourglassPrompt = !hasStartedHourglass
+            }
+            
+            // If user hasn't started their hourglass, don't load feed data
+            if !hasStartedHourglass {
+                await MainActor.run {
+                    self.friendEntries = []
+                    self.isLoading = false
+                }
+                return
+            }
+            
             // Get current user's following list from Firestore
             let userDoc = try await db.collection("users").document(currentUser.uid).getDocument()
             
@@ -65,13 +146,25 @@ class SocialFeedViewModel: ObservableObject {
                 return
             }
             
-            // Get today's date string
-            let today = Date()
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            let todayStr = formatter.string(from: today)
-            
             var feedEntries: [FriendProductivityEntry] = []
+            
+            // First, add the current user's own hourglass to the feed
+            if let currentUserUsername = userData["username"] as? String,
+               let currentUserProductivityData = currentUserProductivityDoc.data() {
+                
+                let currentUserProfileImageURL = userData["profileImageURL"] as? String
+                
+                let currentUserEntry = try await self.convertFirestoreToFeedEntry(
+                    userId: currentUser.uid,
+                    username: currentUserUsername,
+                    profileImageURL: currentUserProfileImageURL,
+                    date: today,
+                    productivityData: currentUserProductivityData,
+                    isMutualFollowing: true // User always has mutual access to their own data
+                )
+                
+                feedEntries.append(currentUserEntry)
+            }
             
             // Get productivity data for each followed user
             for followedUID in following {
@@ -81,6 +174,12 @@ class SocialFeedViewModel: ObservableObject {
                       let username = userProfileData["username"] as? String else {
                     continue
                 }
+                
+                let profileImageURL = userProfileData["profileImageURL"] as? String
+                
+                // Check if this user follows back (mutual following)
+                let theirFollowing = userProfileData["following"] as? [String] ?? []
+                let isMutualFollowing = theirFollowing.contains(currentUser.uid)
                 
                 // Get today's productivity data
                 let productivityDocId = "\(followedUID)_\(todayStr)"
@@ -93,11 +192,26 @@ class SocialFeedViewModel: ObservableObject {
                     let entry = try await self.convertFirestoreToFeedEntry(
                         userId: followedUID,
                         username: username,
+                        profileImageURL: profileImageURL,
                         date: today,
-                        productivityData: productivityData
+                        productivityData: productivityData,
+                        isMutualFollowing: isMutualFollowing
                     )
                     
                     feedEntries.append(entry)
+                } else {
+                    // Even if no productivity data, show the user's profile with empty/default data
+                    // This allows non-mutual followers to see that the user exists
+                    let emptyEntry = FriendProductivityEntry(
+                        userId: followedUID,
+                        username: username,
+                        profileImageURL: profileImageURL,
+                        date: today,
+                        entries: [], // Empty entries will show as gray squares
+                        lastUpdated: Date(),
+                        isMutualFollowing: isMutualFollowing
+                    )
+                    feedEntries.append(emptyEntry)
                 }
             }
             
@@ -119,7 +233,7 @@ class SocialFeedViewModel: ObservableObject {
         }
     }
     
-    private func convertFirestoreToFeedEntry(userId: String, username: String, date: Date, productivityData: [String: Any]) async throws -> FriendProductivityEntry {
+    private func convertFirestoreToFeedEntry(userId: String, username: String, profileImageURL: String?, date: Date, productivityData: [String: Any], isMutualFollowing: Bool) async throws -> FriendProductivityEntry {
         
         // Extract hourglass data
         guard let hourglassData = productivityData["hourglassData"] as? [String: [String: Any]] else {
@@ -168,17 +282,44 @@ class SocialFeedViewModel: ObservableObject {
         return FriendProductivityEntry(
             userId: userId,
             username: username,
+            profileImageURL: profileImageURL,
             date: date,
             entries: entries,
-            lastUpdated: lastUpdated
+            lastUpdated: lastUpdated,
+            isMutualFollowing: isMutualFollowing
         )
     }
     
     func addComment(_ comment: String, to entry: FriendProductivityEntry) {
-        guard let idx = friendEntries.firstIndex(where: { $0.id == entry.id }) else { return }
-        friendEntries[idx].comments.append(comment)
-        commentInputs[entry.id] = ""
-        showCommentInput[entry.id] = false
+        guard let currentUser = Auth.auth().currentUser,
+              let idx = friendEntries.firstIndex(where: { $0.id == entry.id }) else { return }
+        
+        // Get current user's username
+        Task {
+            do {
+                let userDoc = try await db.collection("users").document(currentUser.uid).getDocument()
+                if let userData = userDoc.data(),
+                   let username = userData["username"] as? String {
+                    
+                    let newComment = Comment(
+                        text: comment,
+                        authorId: currentUser.uid,
+                        authorUsername: username
+                    )
+                    
+                    await MainActor.run {
+                        self.friendEntries[idx].comments.append(newComment)
+                        self.commentInputs[entry.id] = ""
+                        self.showCommentInput[entry.id] = false
+                    }
+                    
+                    // TODO: Save comment to Firestore for persistence
+                    // This will be implemented in future updates
+                }
+            } catch {
+                print("Error adding comment: \(error)")
+            }
+        }
     }
     
     func toggleCheer(for entry: FriendProductivityEntry) {
@@ -199,20 +340,26 @@ class SocialFeedViewModel: ObservableObject {
             FriendProductivityEntry(
                 userId: "user1",
                 username: "Tony Wang",
+                profileImageURL: nil,
                 date: Date(),
                 entries: generateMockEntries(),
                 lastUpdated: Date(),
-                comments: ["This is so colorful! Love your routine."],
-                cheerCount: 2
+                comments: [
+                    Comment(text: "This is so colorful! Love your routine.", authorId: "user3", authorUsername: "Sarah Kim", timestamp: Date().addingTimeInterval(-3600))
+                ],
+                cheerCount: 2,
+                isMutualFollowing: true // Mutual following - can see hourglass
             ),
             FriendProductivityEntry(
                 userId: "user2",
                 username: "Sheryl Chen",
+                profileImageURL: nil,
                 date: Date().addingTimeInterval(-86400),
                 entries: generateMockEntries(),
                 lastUpdated: Date().addingTimeInterval(-86400),
                 comments: [],
-                cheerCount: 0
+                cheerCount: 0,
+                isMutualFollowing: false // Not mutual - will show blurred
             )
         ]
         

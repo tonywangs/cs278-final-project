@@ -129,6 +129,20 @@ struct SignUpView: View {
                         .cornerRadius(12)
                         .padding(.horizontal)
                 }
+                
+                // Demo video link
+                Button(action: {
+                    if let url = URL(string: "https://bit.ly/cs278hourglass") {
+                        UIApplication.shared.open(url)
+                    }
+                }) {
+                    Text("Click here to watch a demo video")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Theme.logoColor)
+                        .underline()
+                }
+                .padding(.top, 16)
+                
                 Spacer()
             }
             .padding(.vertical)

@@ -100,9 +100,16 @@ struct HourglassRow: View {
                             .foregroundColor(isBlack ? Theme.parchment : .primary)
                     }
                 } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.clear)
-                        .frame(width: gridBoxSize, height: gridBoxSize)
+                    // Empty space with hourglass symbol
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.clear)
+                            .frame(width: gridBoxSize, height: gridBoxSize)
+                        
+                        Image(systemName: "hourglass")
+                            .font(.system(size: 24))
+                            .foregroundColor(Theme.darkAccentColor.opacity(0.3))
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -208,7 +215,6 @@ struct ProductivityGridView: View {
         .onAppear {
             loadActivities()
             setupNotificationObserver()
-            setupAuthStateListener()
         }
         .onChange(of: showingActivityManagement) { newValue in
             if !newValue {
@@ -231,16 +237,7 @@ struct ProductivityGridView: View {
         }
     }
     
-    private func setupAuthStateListener() {
-        Auth.auth().addStateDidChangeListener { [weak productivityViewModel] _, user in
-            if user != nil {
-                // User logged in, refresh hourglass data from Firebase
-                Task {
-                    await productivityViewModel?.refreshFromFirebase()
-                }
-            }
-        }
-    }
+
 }
 
 struct TimeSlotView: View {

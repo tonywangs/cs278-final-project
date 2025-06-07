@@ -6,6 +6,8 @@ class User {
     this.username = data.username || '';
     this.following = data.following || []; // Array of UIDs this user follows
     this.followers = data.followers || []; // Array of UIDs following this user
+    this.blocked = data.blocked || []; // Array of UIDs this user has blocked
+    this.profileImageURL = data.profileImageURL || null; // URL for profile picture
     this.createdAt = data.createdAt || new Date();
     this.lastActive = data.lastActive || new Date();
   }
@@ -27,6 +29,8 @@ class User {
       username: this.username,
       following: this.following,
       followers: this.followers,
+      blocked: this.blocked,
+      profileImageURL: this.profileImageURL,
       createdAt: this.createdAt,
       lastActive: this.lastActive
     };

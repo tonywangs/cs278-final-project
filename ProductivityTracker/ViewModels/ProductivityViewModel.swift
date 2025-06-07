@@ -15,12 +15,33 @@ class ProductivityViewModel: ObservableObject {
     @Published private(set) var entries: [ProductivityEntry] = []
     private let userDefaults = UserDefaults.standard
     private let notificationCenter = UNUserNotificationCenter.current()
+    private var currentUserId: String?
     
     init() {
         setupNotifications()
-        // Load from Firebase first, then fall back to local storage
-        Task {
-            await loadEntriesFromFirebase()
+        setupAuthListener()
+    }
+    
+    private func setupAuthListener() {
+        Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            Task { @MainActor in
+                if let newUserId = user?.uid {
+                    // Check if user changed
+                    if self?.currentUserId != newUserId {
+                        print("User changed from \(self?.currentUserId ?? "none") to \(newUserId)")
+                        self?.currentUserId = newUserId
+                        
+                        // Clear old data and load new user's data
+                        self?.clearEntries()
+                        await self?.loadEntriesFromFirebase()
+                    }
+                } else {
+                    // User logged out
+                    print("User logged out")
+                    self?.currentUserId = nil
+                    self?.clearEntries()
+                }
+            }
         }
     }
     
@@ -61,10 +82,33 @@ class ProductivityViewModel: ObservableObject {
         // 3. Potentially posting to a social feed
     }
     
+    private func clearEntries() {
+        entries = []
+        print("Cleared hourglass entries")
+    }
+    
+    private func getUserSpecificKey() -> String {
+        guard let userId = currentUserId else {
+            return "productivityEntries_anonymous"
+        }
+        return "productivityEntries_\(userId)"
+    }
+    
     private func loadEntries() {
-        if let data = userDefaults.data(forKey: "productivityEntries"),
+        let key = getUserSpecificKey()
+        if let data = userDefaults.data(forKey: key),
            let decodedEntries = try? JSONDecoder().decode([ProductivityEntry].self, from: data) {
-            entries = decodedEntries
+            // Only load entries for current user and today's date
+            let today = Calendar.current.startOfDay(for: Date())
+            let filteredEntries = decodedEntries.filter { 
+                Calendar.current.isDate($0.date, inSameDayAs: today) && 
+                $0.userId == (currentUserId ?? "anonymous")
+            }
+            entries = filteredEntries
+            print("Loaded \(filteredEntries.count) entries from local storage for user \(currentUserId ?? "anonymous")")
+        } else {
+            entries = []
+            print("No local entries found for user \(currentUserId ?? "anonymous"), starting with blank hourglass")
         }
     }
     
@@ -74,11 +118,19 @@ class ProductivityViewModel: ObservableObject {
     
     func loadEntriesFromFirebase() async {
         guard let currentUser = Auth.auth().currentUser else {
-            // If not authenticated, load from local storage
+            // If not authenticated, start with blank hourglass
             await MainActor.run {
-                loadEntries()
+                self.clearEntries()
+                print("No authenticated user, starting with blank hourglass")
             }
             return
+        }
+        
+        // Update current user ID if needed
+        await MainActor.run {
+            if self.currentUserId != currentUser.uid {
+                self.currentUserId = currentUser.uid
+            }
         }
         
         let db = Firestore.firestore()
@@ -90,12 +142,16 @@ class ProductivityViewModel: ObservableObject {
         let todayStr = formatter.string(from: today)
         let docId = "\(currentUser.uid)_\(todayStr)"
         
+        print("Loading hourglass data for user \(currentUser.uid) on \(todayStr)")
+        
         do {
             let document = try await db.collection("productivity").document(docId).getDocument()
             
             if document.exists,
                let data = document.data(),
                let hourglassData = data["hourglassData"] as? [String: [String: Any]] {
+                
+                print("Found Firebase data with \(hourglassData.count) hours")
                 
                 // Convert Firebase data back to entries
                 var firebaseEntries: [ProductivityEntry] = []
@@ -136,30 +192,36 @@ class ProductivityViewModel: ObservableObject {
                 
                 await MainActor.run {
                     self.entries = firebaseEntries
-                    print("Loaded \(firebaseEntries.count) entries from Firebase")
-                    // Also save to local storage as backup
+                    print("Loaded \(firebaseEntries.count) entries from Firebase for user \(currentUser.uid)")
+                    // Save to user-specific local storage as backup
                     self.saveEntries()
                 }
                 
             } else {
-                // No Firebase data found, load from local storage
-                print("No Firebase data found for today, loading from local storage")
+                // No Firebase data found for today, start with blank hourglass
+                print("No Firebase data found for today for user \(currentUser.uid), starting with blank hourglass")
                 await MainActor.run {
-                    loadEntries()
+                    self.entries = []
+                    // Clear any stale local data for this user/date
+                    self.saveEntries()
                 }
             }
             
         } catch {
-            print("Failed to load from Firebase: \(error), falling back to local storage")
+            print("Failed to load from Firebase: \(error)")
+            // On error, start with blank hourglass for this user rather than loading potentially stale data
             await MainActor.run {
-                loadEntries()
+                self.entries = []
+                print("Started with blank hourglass due to Firebase error")
             }
         }
     }
     
     private func saveEntries() {
+        let key = getUserSpecificKey()
         if let encoded = try? JSONEncoder().encode(entries) {
-            userDefaults.set(encoded, forKey: "productivityEntries")
+            userDefaults.set(encoded, forKey: key)
+            print("Saved \(entries.count) entries to local storage with key: \(key)")
         }
     }
     
@@ -218,6 +280,9 @@ class ProductivityViewModel: ObservableObject {
             ], merge: true)
             
             print("Hourglass data synced successfully")
+            
+            // Notify that hourglass data has been updated
+            NotificationCenter.default.post(name: NSNotification.Name("HourglassDataUpdated"), object: nil)
         } catch {
             print("Failed to sync hourglass data: \(error)")
         }

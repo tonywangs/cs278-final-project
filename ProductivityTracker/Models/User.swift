@@ -15,6 +15,8 @@ struct User: Identifiable, Codable {
     let username: String
     var following: [String] // Array of UIDs this user follows
     var followers: [String] // Array of UIDs following this user
+    var blocked: [String] // Array of UIDs this user has blocked
+    var profileImageURL: String? // URL for profile picture
     var createdAt: Date
     var lastActive: Date
     
@@ -22,7 +24,7 @@ struct User: Identifiable, Codable {
     
     // Custom coding keys to handle Firestore timestamp conversion
     private enum CodingKeys: String, CodingKey {
-        case uid, email, username, following, followers, createdAt, lastActive
+        case uid, email, username, following, followers, blocked, profileImageURL, createdAt, lastActive
     }
     
     // Custom decoder to handle Firestore Timestamp conversion
@@ -34,6 +36,8 @@ struct User: Identifiable, Codable {
         username = try container.decode(String.self, forKey: .username)
         following = try container.decodeIfPresent([String].self, forKey: .following) ?? []
         followers = try container.decodeIfPresent([String].self, forKey: .followers) ?? []
+        blocked = try container.decodeIfPresent([String].self, forKey: .blocked) ?? []
+        profileImageURL = try container.decodeIfPresent(String.self, forKey: .profileImageURL)
         
         // Handle Date fields that might be Firestore Timestamps or regular Dates
         if let timestamp = try? container.decode(Timestamp.self, forKey: .createdAt) {
@@ -58,16 +62,20 @@ struct User: Identifiable, Codable {
         try container.encode(username, forKey: .username)
         try container.encode(following, forKey: .following)
         try container.encode(followers, forKey: .followers)
+        try container.encode(blocked, forKey: .blocked)
+        try container.encodeIfPresent(profileImageURL, forKey: .profileImageURL)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(lastActive, forKey: .lastActive)
     }
     
-    init(uid: String, email: String, username: String, following: [String] = [], followers: [String] = []) {
+    init(uid: String, email: String, username: String, following: [String] = [], followers: [String] = [], blocked: [String] = [], profileImageURL: String? = nil) {
         self.uid = uid
         self.email = email
         self.username = username
         self.following = following
         self.followers = followers
+        self.blocked = blocked
+        self.profileImageURL = profileImageURL
         self.createdAt = Date()
         self.lastActive = Date()
     }
@@ -79,6 +87,8 @@ struct User: Identifiable, Codable {
         self.username = username
         self.following = []
         self.followers = []
+        self.blocked = []
+        self.profileImageURL = nil
         self.createdAt = Date()
         self.lastActive = Date()
     }
@@ -88,6 +98,13 @@ struct User: Identifiable, Codable {
 struct UserProfile: Identifiable, Codable {
     let uid: String
     let username: String
+    let profileImageURL: String?
     
     var id: String { uid }
+    
+    init(uid: String, username: String, profileImageURL: String? = nil) {
+        self.uid = uid
+        self.username = username
+        self.profileImageURL = profileImageURL
+    }
 } 
