@@ -2,7 +2,7 @@
 
 A productivity tracking iOS app that gamifies time management through social accountability and visual progress tracking.
 
-**Video Demo**: [bit.ly/cs278hourglass](youtu.be/gj5VHRDr-i8)
+**Video Demo**: [bit.ly/cs278hourglass](youtu.be/gj5VHRDr-i8)  
 **Liveness Demo**: [link](https://www.youtube.com/shorts/PxyfM8p-abk) 
 
 ## What It Does
