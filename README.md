@@ -5,6 +5,8 @@ A productivity tracking iOS app that gamifies time management through social acc
 **Video Demo**: [bit.ly/cs278hourglass](https://youtu.be/gj5VHRDr-i8)  
 **Liveness Demo**: [youtube.com/shorts/PxyfM8p-abk](https://www.youtube.com/shorts/PxyfM8p-abk) 
 
+<img src="hourglass-demo-pics-clean.svg" alt="Demo of the Hourglass app" class="project-image" width="100%">
+
 ## What It Does
 
 **Hourglass** helps users track productive activities while building accountability through social features:
