@@ -40,6 +40,7 @@ A productivity tracking iOS app that gamifies time management through social acc
 - Profile picture uploads with image processing
 - Follow/unfollow system with user discovery
 - Time-based productivity logging and visualization
+- Daily push notifications reminding users to log times
 
 ## Architecture
 
